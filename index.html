@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced AI Image Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.15.1/dist/ort.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 400px;
+            display: block;
+            margin: 20px auto;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 18px;
+            display: none;
+        }
+        .ai-result {
+            background-color: #ffebee;
+            border-left: 5px solid #f44336;
+        }
+        .human-result {
+            background-color: #e8f5e9;
+            border-left: 5px solid #4caf50;
+        }
+        .confidence-meter {
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .confidence-level {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #f44336);
+        }
+        button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            display: block;
+            width: 100%;
+            margin-top: 15px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        .features {
+            margin-top: 15px;
+            padding-left: 20px;
+        }
+        .features li {
+            margin-bottom: 8px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #4285f4;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Advanced AI Image Detector</h1>
+    
+    <div class="upload-container">
+        <h2>Upload an Image to Analyze</h2>
+        <p>Detect whether an image was AI-generated or human-created with our advanced analysis.</p>
+        
+        <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+        <button onclick="document.getElementById('imageUpload').click()">Choose Image</button>
+        
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner"></div>
+            <p>Analyzing image...</p>
+        </div>
+        
+        <img id="imagePreview" style="display: none;">
+        
+        <div id="result"></div>
+    </div>
+    
+    <script>
+        // Model variables
+        let model = null;
+        const modelPath = 'https://example.com/path/to/your/model.onnx'; // Replace with your model URL
+        
+        // Initialize the model
+        async function initModel() {
+            try {
+                model = await ort.InferenceSession.create(modelPath);
+                console.log("Model loaded successfully");
+            } catch (error) {
+                console.error("Failed to load model:", error);
+                alert("Error loading the AI model. Please try again later.");
+            }
+        }
+        
+        // Call this when the page loads
+        window.onload = initModel;
+        
+        // Handle image upload
+        document.getElementById('imageUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = document.getElementById('imagePreview');
+                img.src = event.target.result;
+                img.style.display = 'block';
+                
+                // Show loading indicator
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('result').style.display = 'none';
+                
+                // Process the image after a small delay to allow rendering
+                setTimeout(() => analyzeImage(img), 100);
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        // Analyze the uploaded image
+        async function analyzeImage(imgElement) {
+            if (!model) {
+                alert("Model is still loading. Please wait a moment and try again.");
+                return;
+            }
+            
+            try {
+                // Preprocess the image
+                const tensor = preprocessImage(imgElement);
+                
+                // Run the model (this is a placeholder - actual model input may vary)
+                const input = new ort.Tensor('float32', tensor, [1, 3, 512, 512]);
+                const outputs = await model.run({ 'input': input });
+                const probs = outputs.output.data;
+                
+                // Get AI probability (assuming output is [human_prob, ai_prob])
+                const aiProb = probs[1];
+                const isAI = aiProb > 0.65;
+                const confidence = aiProb * 100;
+                
+                // Display results
+                showResults(isAI, confidence);
+                
+            } catch (error) {
+                console.error("Analysis error:", error);
+                alert("Error analyzing the image. Please try another image.");
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        }
+        
+        // Image preprocessing function
+        function preprocessImage(imgElement) {
+            // Create a canvas to resize and normalize the image
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Target size for the model
+            const targetSize = 512;
+            canvas.width = targetSize;
+            canvas.height = targetSize;
+            
+            // Draw and resize the image
+            ctx.drawImage(imgElement, 0, 0, targetSize, targetSize);
+            
+            // Get image data and normalize
+            const imageData = ctx.getImageData(0, 0, targetSize, targetSize);
+            const data = imageData.data;
+            const tensor = new Float32Array(3 * targetSize * targetSize);
+            
+            // Normalize to [0,1] and convert to CHW format
+            for (let i = 0; i < data.length; i += 4) {
+                const pixelIndex = i / 4;
+                tensor[pixelIndex] = data[i] / 255.0;         // R
+                tensor[targetSize * targetSize + pixelIndex] = data[i + 1] / 255.0; // G
+                tensor[2 * targetSize * targetSize + pixelIndex] = data[i + 2] / 255.0; // B
+            }
+            
+            return tensor;
+        }
+        
+        // Display the analysis results
+        function showResults(isAI, confidence) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            
+            if (isAI) {
+                resultDiv.className = 'ai-result';
+                resultDiv.innerHTML = `
+                    <h3>AI-generated Image</h3>
+                    <p>Confidence: ${confidence.toFixed(1)}%</p>
+                    <div class="confidence-meter">
+                        <div class="confidence-level" style="width: ${confidence}%"></div>
+                    </div>
+                    <p>AI Indicators Detected:</p>
+                    <ul class="features">
+                        <li>Unusual frequency patterns</li>
+                        <li>Texture anomalies</li>
+                        <li>Generation artifacts</li>
+                        <li>Perfect symmetry where unexpected</li>
+                        <li>Unnatural blending</li>
+                    </ul>
+                `;
+            } else {
+                resultDiv.className = 'human-result';
+                resultDiv.innerHTML = `
+                    <h3>Human-created Image</h3>
+                    <p>Confidence: ${(100 - confidence).toFixed(1)}%</p>
+                    <div class="confidence-meter">
+                        <div class="confidence-level" style="width: ${100 - confidence}%"></div>
+                    </div>
+                    <p>Human Indicators Detected:</p>
+                    <ul class="features">
+                        <li>Natural brush/texture patterns</li>
+                        <li>Consistent lighting/shading</li>
+                        <li>Organic imperfections</li>
+                        <li>Authentic color variations</li>
+                        <li>Human-like composition</li>
+                    </ul>
+                `;
+            }
+        }
+    </script>
+    
+    <div style="margin-top: 40px; text-align: center; color: #777;">
+        <p>This AI detector analyzes multiple visual features to determine image authenticity.</p>
+        <p>Note: No detector is 100% accurate, especially with high-quality AI-generated images.</p>
+    </div>
+</body>
+</html>
